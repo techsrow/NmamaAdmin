@@ -1,0 +1,31 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Image as ImageIcon, RefreshCw, Search, SlidersHorizontal, Sparkles } from "lucide-react";
+import { adminPlatformService as api } from "../../services/adminPlatformService";
+import productService from "../../services/productService";
+import "./search-discovery.css";
+
+const unwrap=(v)=>{const x=v?.data?.data??v?.data??v?.items??v?.results??v;if(Array.isArray(x))return x;if(Array.isArray(x?.items))return x.items;if(Array.isArray(x?.products))return x.products;if(Array.isArray(x?.rows))return x.rows;if(Array.isArray(x?.data))return x.data;return[]};
+const err=(e)=>e?.adminMessage||e?.response?.data?.message||e?.response?.data?.error||e?.message||"Request failed";
+const img=(p)=>p?.imageUrl||p?.images?.find?.(i=>i?.isMain)?.url||p?.images?.[0]?.url||p?.variants?.[0]?.images?.[0]?.url||"";
+const stock=(p)=>(p?.variants||[]).reduce((a,v)=>a+Number(v?.stockQuantity||0),0);
+const price=(p)=>{const a=(p?.variants||[]).map(v=>Number(v?.discountPrice??v?.price)).filter(Number.isFinite);if(!a.length)return"—";const mn=Math.min(...a),mx=Math.max(...a);return mn===mx?`₹${mn.toLocaleString("en-IN")}`:`₹${mn.toLocaleString("en-IN")} – ₹${mx.toLocaleString("en-IN")}`};
+
+export default function SearchDiscoveryPage(){
+ const[tab,setTab]=useState("products"),[products,setProducts]=useState([]),[suggestions,setSuggestions]=useState([]),[filters,setFilters]=useState([]),[q,setQ]=useState(""),[loading,setLoading]=useState(true),[error,setError]=useState("");
+ const loadProducts=useCallback(async()=>{setLoading(true);setError("");try{setProducts(unwrap(await productService.list({page:1,limit:500})))}catch(e){setProducts([]);setError(err(e))}finally{setLoading(false)}},[]);
+ const loadDiscovery=useCallback(async(kind)=>{setLoading(true);setError("");try{if(kind==="suggestions")setSuggestions(unwrap(await api.get("/catalog-v2/suggestions",{q:q||undefined,search:q||undefined,limit:100})));if(kind==="filters"){const r=await api.get("/catalog-v2/filters");const x=r?.data?.data??r?.data??r;setFilters(Array.isArray(x)?x:x&&typeof x==="object"?Object.entries(x).map(([name,value])=>({name,value})):[])}}catch(e){kind==="suggestions"?setSuggestions([]):setFilters([]);setError(err(e))}finally{setLoading(false)}},[q]);
+ useEffect(()=>{loadProducts()},[loadProducts]);
+ useEffect(()=>{if(tab==="products")loadProducts();else loadDiscovery(tab)},[tab]); // eslint-disable-line react-hooks/exhaustive-deps
+ const rows=useMemo(()=>{const s=q.trim().toLowerCase();if(!s)return products;return products.filter(p=>[p?.name,p?.slug,p?.productType,p?.category?.name,p?.subCategory?.name,...(p?.variants||[]).flatMap(v=>[v?.sku,v?.color,v?.size])].filter(Boolean).join(" ").toLowerCase().includes(s))},[products,q]);
+ const suggestionRows=useMemo(()=>{const s=q.trim().toLowerCase();return !s?suggestions:suggestions.filter(x=>JSON.stringify(x).toLowerCase().includes(s))},[suggestions,q]);
+ const refresh=()=>tab==="products"?loadProducts():loadDiscovery(tab);
+ return <div className="sd-page">
+  <header className="sd-header"><div><p>PRODUCTS</p><h1>Search & discovery</h1><span>Preview product search, suggestions and storefront filters.</span></div><button onClick={refresh} disabled={loading}><RefreshCw size={16}/>Refresh</button></header>
+  <div className="sd-tabs"><button className={tab==="products"?"active":""} onClick={()=>setTab("products")}><Search size={16}/>Search results</button><button className={tab==="suggestions"?"active":""} onClick={()=>setTab("suggestions")}><Sparkles size={16}/>Suggestions</button><button className={tab==="filters"?"active":""} onClick={()=>setTab("filters")}><SlidersHorizontal size={16}/>Filter metadata</button></div>
+  {error&&<div className="sd-error"><AlertTriangle size={18}/><span>{error}</span></div>}
+  {tab!=="filters"&&<div className="sd-search"><Search size={18}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search product, SKU, category, color, size…"/>{q&&<button onClick={()=>setQ("")}>Clear</button>}</div>}
+  {tab==="products"&&<section className="sd-card"><div className="sd-card-head"><div><h2>Product search preview</h2><p>Products available to storefront discovery.</p></div><b>{rows.length} products</b></div>{loading?<div className="sd-empty">Loading…</div>:rows.length?<div className="sd-table"><table><thead><tr><th>Product</th><th>Status</th><th>Category</th><th>Variants</th><th>Inventory</th><th>Price</th></tr></thead><tbody>{rows.map(p=><tr key={p.id}><td><div className="sd-product"><i>{img(p)?<img src={img(p)} alt=""/>:<ImageIcon size={18}/>}</i><span><strong>{p.name||`Product #${p.id}`}</strong><small>{p.slug||"No handle"}</small></span></div></td><td><em className={p.isActive===false?"draft":"active"}>{p.isActive===false?"Draft":"Active"}</em></td><td>{p.category?.name||"Uncategorized"}</td><td>{p.variants?.length||0}</td><td>{stock(p)} in stock</td><td>{price(p)}</td></tr>)}</tbody></table></div>:<div className="sd-empty">No matching products.</div>}</section>}
+  {tab==="suggestions"&&<section className="sd-card"><div className="sd-card-head"><div><h2>Suggestions</h2><p>Results returned by the discovery API.</p></div><b>{suggestionRows.length}</b></div>{loading?<div className="sd-empty">Loading…</div>:suggestionRows.length?<div className="sd-list">{suggestionRows.map((x,i)=><div key={x?.id??i}><Sparkles size={17}/><span><strong>{x?.name||x?.title||x?.label||x?.query||x?.value||`Suggestion ${i+1}`}</strong><small>{x?.type||x?.slug||"Search suggestion"}</small></span></div>)}</div>:<div className="sd-empty">No suggestions returned.</div>}</section>}
+  {tab==="filters"&&<section className="sd-card"><div className="sd-card-head"><div><h2>Filter metadata</h2><p>Storefront search and collection facets.</p></div><b>{filters.length} groups</b></div>{loading?<div className="sd-empty">Loading…</div>:filters.length?<div className="sd-grid">{filters.map((x,i)=><article key={x?.id??i}><strong>{x?.name||x?.label||x?.key||`Filter ${i+1}`}</strong><pre>{JSON.stringify(x?.options??x?.values??x?.value??x,null,2)}</pre></article>)}</div>:<div className="sd-empty">No filter metadata returned.</div>}</section>}
+ </div>
+}
