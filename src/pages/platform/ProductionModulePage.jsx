@@ -182,7 +182,7 @@ export default function ProductionModulePage({ config }) {
     const result = await api.get("/platform/admin/roles");
     setRoleOptions(arr(result).map(role => ({ value: String(role.id), label: role.name || `Role ${role.id}` })));
   }, []);
-  const res = config.resources[tab];
+  const res = config.resources[tab]||config.resources[0];
   useEffect(() => {
     if (config.title === "Admin & Staff") refreshRoles().catch(e => setError(errText(e)));
   }, [config.title, refreshRoles]);
@@ -191,6 +191,7 @@ export default function ProductionModulePage({ config }) {
       setLoading(true);
       setError("");
       try {
+        if(res.unavailable){setRows([]);setError(res.unavailable);return;}
         setRows(
           arr(
             await api.get(res.path, {
@@ -254,7 +255,7 @@ export default function ProductionModulePage({ config }) {
   };
   const openEdit = (row) => {
     setEditing(row);
-    setForm({ ...row });
+    setForm(Object.fromEntries(Object.entries(row).map(([k,v])=>[k, v&&typeof v==="object"?JSON.stringify(v,null,2):v])));
     setDrawer(true);
   };
   const save = async () => {
@@ -276,15 +277,20 @@ export default function ProductionModulePage({ config }) {
         if (!Number.isFinite(payload.rate) || payload.rate < 0 || payload.rate > 100) throw new Error("Tax rate must be between 0 and 100%");
       }
       if (res.key === "credit" && (!Number.isFinite(payload.amount) || payload.amount <= 0)) throw new Error("Credit note amount must be greater than zero");
-      if (editing?.id != null) {
-        try {
-          await api.patch(`${res.path}/${editing.id}`, payload);
-        } catch (e) {
-          if (e?.response?.status === 404 || e?.response?.status === 405)
-            await api.put(`${res.path}/${editing.id}`, payload);
-          else throw e;
-        }
-      } else await api.post(res.path, payload);
+      for(const field of res.fields){
+        if(field.type==='password'&&!payload[field.name])delete payload[field.name];
+        if(['date','datetime-local'].includes(field.type))payload[field.name]=payload[field.name]?new Date(payload[field.name]).toISOString():null;
+        if(['permissions','events','countries'].includes(field.name)&&typeof payload[field.name]==='string')payload[field.name]=payload[field.name].split(',').map(x=>x.trim()).filter(Boolean);
+      }
+      if(res.integration){
+        if(!payload.provider?.trim()||!payload.name?.trim())throw new Error('Provider and connection name are required.');
+        await api.put(`${res.path}/${encodeURIComponent(payload.provider)}/${encodeURIComponent(payload.name)}`,payload);
+      }else if(res.keyField){
+        if(!payload[res.keyField]?.trim())throw new Error('Setting key is required.');
+        await api.put(`${res.path}/${encodeURIComponent(payload[res.keyField])}`,payload);
+      }else if(res.singleton)await api.put(res.path,payload);
+      else if(editing?.id!=null)await api.patch(`${res.path}/${editing.id}`,payload);
+      else await api.post(res.path,payload);
       setDrawer(false);
       await load();
       if (config.title === "Admin & Staff" && res.key === "roles") await refreshRoles();

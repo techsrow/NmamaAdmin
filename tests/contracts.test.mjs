@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {buildShipmentPayload,reconciliationPayload,receiptAttempt} from '../src/services/adminContracts.js';
+const input={provider:'Shadowfax360',order:{totalAmount:1120,shippingFee:120,items:[{id:1,quantity:2,allocatedQuantity:0}]},items:[{orderItemId:1,quantity:2}],pkg:{pickupLocationId:1,weightKg:1,lengthCm:10,widthCm:10,heightCm:5}};
+test('Shadowfax full order excludes items and preserves document fields',()=>{const p=buildShipmentPayload({...input,documents:{ewayBill:'123456789012'}});assert.equal('items' in p,false);assert.equal(p.ewayBill,'123456789012')});
+test('Shadowfax rejects partial quantities',()=>assert.throws(()=>buildShipmentPayload({...input,items:[{orderItemId:1,quantity:1}]}),/complete/));
+test('Other courier keeps selected quantities',()=>assert.equal(buildShipmentPayload({...input,provider:'Shiprocket'}).items[0].quantity,2));
+test('High value requires merchant documents',()=>assert.throws(()=>buildShipmentPayload({...input,order:{...input.order,totalAmount:60000}}),/e-way/));
+test('Invalid weights blocked',()=>assert.throws(()=>buildShipmentPayload({...input,pkg:{weightKg:'bad'}}),/weight/));
+test('optional booking fields can all be omitted',()=>{const p=buildShipmentPayload({...input,documents:{pickupDate:'',pickupSlot:'',ewayBill:'',sellerGstin:''}});for(const k of ['pickupDate','pickupSlot','ewayBill','sellerGstin'])assert.equal(k in p,false)});
+test('unsupported pickup scheduling is rejected',()=>{assert.throws(()=>buildShipmentPayload({...input,documents:{pickupDate:'2026-12-01'}}),/not supported/);assert.throws(()=>buildShipmentPayload({...input,documents:{pickupSlot:'slot_1'}}),/not supported/)});
+test('Reconciliation cannot change total stock',()=>assert.throws(()=>reconciliationPayload({stockQuantity:3},[{warehouseId:1,quantity:2}],'Stock audit'),/equal/));
+test('Duplicate warehouse allocations blocked',()=>assert.throws(()=>reconciliationPayload({stockQuantity:3},[{warehouseId:1,quantity:2},{warehouseId:1,quantity:1}],'Stock audit'),/once/));
+test('Balanced reconciliation carries expected stock',()=>assert.deepEqual(reconciliationPayload({stockQuantity:3},[{warehouseId:1,quantity:3}],'Stock audit'),{expectedStock:3,allocations:[{warehouseId:1,quantity:3}],reason:'Stock audit'}));
+test('Receipt retry survives remount and blocks changed uncertain request',()=>{const data=new Map();const storage={getItem:k=>data.get(k),setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};const a=receiptAttempt(storage,'user',1,{quantity:2},()=> 'unique-1');const b=receiptAttempt(storage,'user',1,{quantity:2},()=> 'unique-2');assert.equal(a.key,b.key);assert.throws(()=>receiptAttempt(storage,'user',1,{quantity:3},()=> 'unique-3'),/uncertain/);a.finish();assert.equal(receiptAttempt(storage,'user',1,{quantity:3},()=> 'unique-3').key,'unique-3')});

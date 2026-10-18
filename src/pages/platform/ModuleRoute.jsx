@@ -1,3 +1,5 @@
+import NavigationManager from "./NavigationManager";
+import InventoryTools from "../inventory/InventoryTools";
 import React from "react";
 import { Navigate, useParams } from "react-router-dom";
 import ProductionModulePage from "./ProductionModulePage";
@@ -10,6 +12,8 @@ import { productionConfigs } from "./productionConfigs";
 
 export default function ModuleRoute() {
   const { module } = useParams();
+  if (module === "navigation") return <NavigationManager />;
+  if(["barcodes","reconciliation","ledger"].includes(module))return <InventoryTools key={module} mode={module}/>;
   if (module === "collections") return <CollectionsMerchandisingPage />;
   if (module === "search") return <SearchDiscoveryPage />;
   if (module === "inventory") return <InventoryPage />;
@@ -17,5 +21,5 @@ export default function ModuleRoute() {
   if (module === "shipping") return <ShippingPage />;
   const config = productionConfigs[module];
   if (!config) return <Navigate to="/dashboard" replace />;
-  return <ProductionModulePage config={config} />;
+  return <ProductionModulePage key={module} config={config} />;
 }

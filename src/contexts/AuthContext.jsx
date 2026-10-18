@@ -16,7 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem("adminToken"));
   const [user, setUser] = useState(() => {
     const raw = localStorage.getItem("adminUser");
-    return raw ? JSON.parse(raw) : null;
+    try{return raw ? JSON.parse(raw) : null;}catch{return null;}
   });
   const [loading, setLoading] = useState(true);
 
@@ -52,6 +52,7 @@ export const AuthProvider = ({ children }) => {
     const newToken = res?.data?.token;
     const newUser = res?.data?.user;
 
+    if(!newToken||!["Admin","Staff"].includes(newUser?.role))throw new Error("An admin or staff account is required.");
     localStorage.setItem("adminToken", newToken);
     localStorage.setItem("adminUser", JSON.stringify(newUser));
     setToken(newToken);

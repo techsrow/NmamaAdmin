@@ -1,5 +1,5 @@
 import AppLayout from "./App";
-import React from "react";
+import React,{lazy,Suspense} from "react";
 import ReactDOM from "react-dom/client";
 import {
   BrowserRouter,
@@ -24,9 +24,9 @@ import VerifyEmail from "./pages/auth/VerifyEmail";
 import Dashboard from "./pages/Dashboard";
 import Categories from "./pages/catalog/Categories";
 import SubCategories from "./pages/catalog/SubCategories";
-import Products from "./pages/admin/Products";
-import ProductForm from "./pages/admin/ProductForm";
-import OrderDetails from "./pages/admin/OrderDetails";
+const Products=lazy(()=>import("./pages/admin/Products"));
+const ProductForm=lazy(()=>import("./pages/admin/ProductForm"));
+const OrderDetails=lazy(()=>import("./pages/admin/OrderDetails"));
 import Orders from "./pages/admin/Orders";
 import TagsPage from "./pages/tags/TagsPage";
 import CouponsPage from "./pages/CouponsPage";
@@ -35,7 +35,7 @@ import Users from "./pages/Users";
 import HomeSliderAdmin from "./pages/admin/home-slider/HomeSliderAdmin";
 import BannerGridAdmin from "./pages/admin/banner-grid/page";
 
-import ModuleRoute from "./pages/platform/ModuleRoute";
+const ModuleRoute=lazy(()=>import("./pages/platform/ModuleRoute"));
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -43,7 +43,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 
       {/* ✅ Removed basename="/admin" */}
       <BrowserRouter>
-        <Routes>
+        <Suspense fallback={<div className="p-6">Loading page…</div>}><Routes>
 
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
@@ -144,7 +144,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             path="*"
             element={<Navigate to="/dashboard" replace />}
           />
-        </Routes>
+        </Routes></Suspense>
       </BrowserRouter>
     </AuthProvider>
   </React.StrictMode>

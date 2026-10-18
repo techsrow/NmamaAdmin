@@ -37,14 +37,15 @@ function message(err, url) {
   return err?.message || 'Request failed';
 }
 
-async function requestWithFallback({ method = 'get', url, data, params, responseType }) {
+async function requestWithFallback({ method = 'get', url, data, params, responseType, headers }) {
+  url=url.replace(/^\/catalog-v2(?=\/|$)/,"/catalog").replace(/^\/(returns|promotions)(?=\/|$)/,"/commerce/$1");
   const cached = routeCache.get(url);
-  const urls = unique([cached, ...candidates(url)]);
+  const urls = method.toLowerCase()==='get' ? unique([cached, ...candidates(url)]) : [url];
   let lastError;
 
   for (const candidate of urls) {
     try {
-      const res = await api.request({ method, url: candidate, data, params, responseType });
+      const res = await api.request({ method, url: candidate, data, params, responseType, headers });
       routeCache.set(url, candidate);
       return res.data;
     } catch (err) {
@@ -63,7 +64,7 @@ async function requestWithFallback({ method = 'get', url, data, params, response
 export const adminPlatformService = {
   request: requestWithFallback,
   get: (url, params) => requestWithFallback({ method: 'get', url, params }),
-  post: (url, data) => requestWithFallback({ method: 'post', url, data }),
+  post: (url, data, headers) => requestWithFallback({ method: 'post', url, data, headers }),
   patch: (url, data) => requestWithFallback({ method: 'patch', url, data }),
   put: (url, data) => requestWithFallback({ method: 'put', url, data }),
   delete: (url) => requestWithFallback({ method: 'delete', url }),

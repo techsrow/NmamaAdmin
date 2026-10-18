@@ -17,7 +17,7 @@ const EMPTY: BannerGridPayload = {
 export default function AdminBannerGridPage() {
   // ✅ single API_BASE only (Vite env)
   const API_BASE = useMemo(() => {
-    return (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+    return (import.meta.env.VITE_API_URL || "https://api.nmama.in/api").replace(/\/$/, "");
   }, []);
 
   const [form, setForm] = useState<BannerGridPayload>(EMPTY);

@@ -2,13 +2,24 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import orderService from "../../services/orderService";
 import shiprocketService from "../../services/shiprocketService";
+import shippingAdminService from "../../services/shippingAdminService";
+import {enabledOrderProviders} from "../../services/orderDocuments";
+import OrderDocuments from "../../components/OrderDocuments";
 
 const STATUSES = ["Pending", "Confirmed", "Shipped", "Delivered", "Cancelled"];
 const PAY_STATUSES = ["Pending", "Created", "Paid", "Failed", "Refunded"];
-const PROVIDERS = ["Shiprocket", "Delhivery", "Manual"];
+
 const SHIPMENT_STATUSES = [
   "NotCreated",
   "Created",
+  "Draft",
+  "ReadyToShip",
+  "AwbAssigned",
+  "PickupScheduled",
+  "DeliveryFailed",
+  "NDR",
+  "RTOInitiated",
+  "RTOInTransit",
   "Picked",
   "InTransit",
   "OutForDelivery",
@@ -84,8 +95,12 @@ export default function OrderDetails() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [shippingFeedback, setShippingFeedback] = useState(null);
 
   const [order, setOrder] = useState(null);
+  const [providers, setProviders] = useState([]);
+  const [providerError, setProviderError] = useState("");
+  useEffect(() => { let active=true; shippingAdminService.providers().then(rows=>{if(active)setProviders(rows)}).catch(()=>{if(active)setProviderError("Unable to load enabled shipping providers. Check Shipping configuration and reload.")}); return ()=>{active=false}; }, []);
 
   // local edit fields
   const [status, setStatus] = useState("Pending");
@@ -99,9 +114,9 @@ export default function OrderDetails() {
   const [trackingCode, setTrackingCode] = useState("");
   const [shippingFee, setShippingFee] = useState("");
 
-  const load = async () => {
+  const load = async ({silent=false} = {}) => {
     try {
-      setLoading(true);
+      if(!silent) setLoading(true);
       setErr("");
 
       const res = await orderService.adminGet(orderId);
@@ -127,11 +142,13 @@ export default function OrderDetails() {
           ? String(Number(data.shippingFee))
           : ""
       );
+      return true;
     } catch (e) {
       console.error(e);
       setErr(e?.response?.data?.message || e.message || "Failed to load order");
+      return false;
     } finally {
-      setLoading(false);
+      if(!silent) setLoading(false);
     }
   };
 
@@ -174,40 +191,21 @@ export default function OrderDetails() {
   };
 
   const saveShipping = async () => {
+    setShippingFeedback(null);
     try {
-      setSaving(true);
-      setErr("");
-
-      const isShiprocket = String(shippingProvider || "").toLowerCase() === "shiprocket";
-
-      // ✅ IMPORTANT: do NOT allow faking Shiprocket shipment fields
-      // These must be set by push/sync APIs only.
-      const payload = {
-        shippingProvider: shippingProvider || null,
-        shippingFee: shippingFee === "" ? null : Number(shippingFee),
-
-        // allow trackingCode manual if you want
-        trackingCode: trackingCode || null,
-
-        // Allow manual provider updates ONLY
-        ...(isShiprocket
-          ? {}
-          : {
-              shipmentStatus: shipmentStatus || null,
-              shipmentId: shipmentId || null,
-              awbNumber: awbNumber || null,
-              trackingUrl: trackingUrl || null,
-            }),
-      };
-
-      await orderService.updateShipping(orderId, payload);
-      await load();
+      setSaving(true); setErr("");
+      const fee=shippingFee === "" ? null : Number(shippingFee);
+      if(fee!==null&&(!Number.isFinite(fee)||fee<0))throw new Error("Enter a valid shipping fee of zero or more, or leave it blank.");
+      const carrierManaged=["Shiprocket","Shadowfax360"].includes(shippingProvider);
+      const payload={shippingProvider:shippingProvider||null,shippingFee:fee,trackingCode:trackingCode||null,
+        ...(carrierManaged?{}:{shipmentStatus:shipmentStatus||undefined,shipmentId:shipmentId||null,awbNumber:awbNumber||null,trackingUrl:trackingUrl||null})};
+      const response=await orderService.updateShipping(orderId,payload);
+      if(response?.data?.success===false)throw new Error(response.data.message||"The API could not save shipping details.");
+      const refreshed=await load({silent:true});
+      setShippingFeedback({type:refreshed?"success":"warning",message:refreshed?"Shipping details saved successfully. This saves order details; use Create / manage shipment to book a courier and generate an AWB.":"Shipping details were saved, but the order could not be refreshed. Reload this page to see the latest details."});
     } catch (e) {
-      console.error(e);
-      setErr(e?.response?.data?.message || "Failed to update shipping");
-    } finally {
-      setSaving(false);
-    }
+      setShippingFeedback({type:"error",message:e?.response?.data?.message||e.message||"Failed to update shipping. Please try again."});
+    } finally { setSaving(false); }
   };
 
   const createShipment = async () => {
@@ -278,11 +276,13 @@ export default function OrderDetails() {
 
   const canCreateShipment =
     (order.paymentStatus === "Paid" || cod) &&
-    !(order.shippingProvider === "Shiprocket" && order.shipmentId);
+    !order.shipmentId &&
+    !(order.shipments || []).some(s => s.status !== "Cancelled") &&
+    order.shippingProvider !== "Shadowfax360";
 
   const canSyncShipment = order.shippingProvider === "Shiprocket" && !!order.shipmentId;
 
-  const isShiprocket = String(shippingProvider || "").toLowerCase() === "shiprocket";
+  const isShiprocket = ["Shiprocket","Shadowfax360"].includes(shippingProvider);
   const shiprocketFieldsLocked = isShiprocket; // lock fields when provider is shiprocket
 
   return (
@@ -397,9 +397,12 @@ export default function OrderDetails() {
         </div>
       </div>
 
+      <OrderDocuments order={order}/>
       {/* Shipping */}
       <div className="bg-white border rounded-xl p-4 mb-4">
         <h2 className="font-semibold mb-3">Shipping / Tracking</h2>
+        <p className="text-sm text-gray-600 mb-3">Update the order’s shipping details here. Booking a courier and generating its label are separate actions in Shipping.</p>
+        {providerError&&<p role="alert" className="text-red-700 mb-3">{providerError}</p>}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
@@ -410,9 +413,9 @@ export default function OrderDetails() {
               onChange={(e) => setShippingProvider(e.target.value)}
             >
               <option value="">Select</option>
-              {PROVIDERS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
+              {enabledOrderProviders(providers,order.shippingProvider).map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
                 </option>
               ))}
             </select>
@@ -425,7 +428,7 @@ export default function OrderDetails() {
               value={shipmentStatus}
               onChange={(e) => setShipmentStatus(e.target.value)}
               disabled={shiprocketFieldsLocked}
-              title={shiprocketFieldsLocked ? "Shiprocket status is managed by Sync" : ""}
+              title={shiprocketFieldsLocked ? "Carrier status is managed through Shipping" : ""}
             >
               {SHIPMENT_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -436,12 +439,13 @@ export default function OrderDetails() {
           </div>
 
           <div>
-            <label className="text-xs font-medium">Shipping Fee</label>
+            <label className="text-xs font-medium">Shipping Fee (optional)</label>
             <input
               className="w-full border rounded-lg px-3 py-2 mt-1"
               value={shippingFee}
               onChange={(e) => setShippingFee(e.target.value)}
-              placeholder="0"
+              type="number" min="0" step="0.01"
+              placeholder="Leave blank if not set"
             />
           </div>
 
@@ -451,7 +455,8 @@ export default function OrderDetails() {
               className="w-full border rounded-lg px-3 py-2 mt-1 bg-gray-50"
               value={shipmentId}
               readOnly
-              title="Generated by Shiprocket"
+              placeholder="Generated after courier booking"
+              title="Generated by the shipping provider"
             />
           </div>
 
@@ -461,12 +466,13 @@ export default function OrderDetails() {
               className="w-full border rounded-lg px-3 py-2 mt-1 bg-gray-50"
               value={awbNumber}
               readOnly
-              title="Generated by Shiprocket"
+              placeholder="Generated after courier booking"
+              title="Generated by the shipping provider"
             />
           </div>
 
           <div>
-            <label className="text-xs font-medium">Tracking Code</label>
+            <label className="text-xs font-medium">Tracking Code (optional)</label>
             <input
               className="w-full border rounded-lg px-3 py-2 mt-1"
               value={trackingCode}
@@ -481,7 +487,8 @@ export default function OrderDetails() {
               className="w-full border rounded-lg px-3 py-2 mt-1 bg-gray-50"
               value={trackingUrl}
               readOnly
-              title="Generated by Shiprocket"
+              placeholder="Generated after courier booking"
+              title="Generated by the shipping provider"
             />
             {trackingUrl ? (
               <a
@@ -496,12 +503,13 @@ export default function OrderDetails() {
           </div>
         </div>
 
+        {shippingFeedback&&<div className={`mt-4 p-3 rounded-lg border ${shippingFeedback.type==='error'?'bg-red-50 text-red-800 border-red-200':shippingFeedback.type==='warning'?'bg-amber-50 text-amber-900 border-amber-200':'bg-green-50 text-green-800 border-green-200'}`} role={shippingFeedback.type==='error'?'alert':'status'}>{shippingFeedback.message}</div>}
         <div className="mt-3 flex justify-end gap-2">
           <button
             onClick={saveShipping}
             disabled={saving}
             className="px-3 py-2 bg-black text-white rounded-lg disabled:opacity-60"
-            title={isShiprocket ? "Only provider + fee + tracking code can be updated for Shiprocket" : ""}
+            title={isShiprocket ? "Carrier shipment fields are managed through Shipping" : ""}
           >
             {saving ? "Saving..." : "Update Shipping"}
           </button>
@@ -550,7 +558,7 @@ export default function OrderDetails() {
           disabled={saving || !canCreateShipment}
           title={!canCreateShipment ? "Only PAID or COD orders & not already pushed" : ""}
         >
-          Create Shipment
+          Create Shiprocket shipment
         </button>
 
         <button
@@ -559,7 +567,7 @@ export default function OrderDetails() {
           disabled={saving || !canSyncShipment}
           title={!canSyncShipment ? "Create shipment first (needs shipmentId)" : ""}
         >
-          Sync Status
+          Sync Shiprocket status
         </button>
       </div>
     </div>

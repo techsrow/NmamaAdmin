@@ -30,8 +30,8 @@ export const paymentAdminService = {
   async setProviderStatus(provider, isEnabled) {
     return unwrap(await api.patch(`/payments/providers/${provider}/status`, { isEnabled }));
   },
-  async refund(paymentId, payload) {
-    return unwrap(await api.post(`/payments/${paymentId}/refund`, payload));
+  async refund(paymentId, payload, requestKey) {
+    return unwrap(await api.post(`/payments/${paymentId}/refund`, payload, {headers:{"Idempotency-Key":requestKey}}));
   },
   async manualPayment(payload) {
     return unwrap(await api.post("/payments/manual", payload));

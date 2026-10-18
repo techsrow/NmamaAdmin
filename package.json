@@ -1,34 +1,32 @@
 {
-  "name": "react-admin-dashboard",
+  "name": "namama-main-admin",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.mjs",
+    "test:ui": "vitest run"
   },
   "dependencies": {
-    "@ckeditor/ckeditor5-build-classic": "^41.4.2",
-    "@ckeditor/ckeditor5-react": "^11.0.1",
-    "axios": "^1.13.2",
-    "lucide-react": "^0.552.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-router-dom": "^7.12.0"
+    "@ckeditor/ckeditor5-build-classic": "41.4.2",
+    "@ckeditor/ckeditor5-react": "9.5.0",
+    "axios": "^1.12.2",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.36.0",
-    "@types/react": "^19.1.16",
-    "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^5.0.4",
+    "@testing-library/react": "^16.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.21",
-    "eslint": "^9.36.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.22",
-    "globals": "^16.4.0",
+    "jsdom": "^26.1.0",
     "postcss": "^8.5.6",
-    "vite": "^7.1.7"
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.4.1",
+    "vitest": "^3.2.4"
   }
 }
