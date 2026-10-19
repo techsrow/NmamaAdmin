@@ -6,7 +6,7 @@ import ShippingPage from '../src/pages/shipping/ShippingPage';
 import api from '../src/services/api';
 import shipping from '../src/services/shippingAdminService';
 vi.mock('../src/services/api',()=>({default:{get:vi.fn(),post:vi.fn()}}));
-vi.mock('../src/services/shippingAdminService',()=>({default:{dashboard:vi.fn(async()=>({})),fulfillmentOrders:vi.fn(async()=>[]),shipments:vi.fn(async()=>[]),providerCatalog:vi.fn(async()=>[{provider:'Shadowfax360'}]),providers:vi.fn(async()=>[{provider:'Shadowfax360',isEnabled:true,mode:'TEST',publicConfig:{enableBooking:false,productCategory:'Clothing'}}]),saveProvider:vi.fn(async()=>({})),testProvider:vi.fn(async()=>({ok:true}))}}));
+vi.mock('../src/services/shippingAdminService',()=>({default:{dashboard:vi.fn(async()=>({})),fulfillmentOrders:vi.fn(async()=>[]),shipments:vi.fn(async()=>[]),pickupLocations:vi.fn(async()=>[{id:1,name:'Mumbai',pincode:'400102',isActive:true}]),providerCatalog:vi.fn(async()=>[{provider:'Shadowfax360'}]),providers:vi.fn(async()=>[{provider:'Shadowfax360',isEnabled:true,mode:'TEST',publicConfig:{enableBooking:false,productCategory:'Clothing'}}]),saveProvider:vi.fn(async()=>({})),testProvider:vi.fn(async()=>({ok:true}))}}));
 afterEach(()=>{cleanup();vi.clearAllMocks()});
 describe('Main admin flows',()=>{
  it('generates selected barcode without creating a sale',async()=>{
@@ -24,4 +24,12 @@ describe('Main admin flows',()=>{
  const enable=screen.getByRole('checkbox',{name:/Enable API booking/});fireEvent.click(enable);fireEvent.click(screen.getByRole('button',{name:'Save provider'}));
  await waitFor(()=>expect(shipping.saveProvider).toHaveBeenCalledWith('Shadowfax360',expect.objectContaining({credentials:{},publicConfig:{productCategory:'Clothing',enableBooking:true}})));
  });
+});
+
+it('saves Delhivery warehouse mapping without replacing an existing token',async()=>{
+ shipping.providers.mockResolvedValueOnce([{provider:'Delhivery',isEnabled:true,mode:'LIVE',publicConfig:{}}]);
+ render(<ShippingPage/>);fireEvent.click(screen.getByRole('button',{name:'Shipping Providers'}));
+ const heading=await screen.findByRole('heading',{name:'Delhivery'});fireEvent.click(heading.closest('.ship-provider').querySelector('.ship-btn.primary'));
+ const field=await screen.findByLabelText('Delhivery warehouse for Mumbai (400102)');fireEvent.change(field,{target:{value:'Namama Mumbai WH'}});fireEvent.click(screen.getByRole('button',{name:'Save provider'}));
+ await waitFor(()=>expect(shipping.saveProvider).toHaveBeenCalledWith('Delhivery',expect.objectContaining({mode:'LIVE',credentials:{},publicConfig:{pickupLocationNames:{'1':'Namama Mumbai WH'}}})));
 });

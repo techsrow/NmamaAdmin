@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import orderService from "../../services/orderService";
-import shiprocketService from "../../services/shiprocketService";
 import shippingAdminService from "../../services/shippingAdminService";
 import {enabledOrderProviders} from "../../services/orderDocuments";
 import OrderDocuments from "../../components/OrderDocuments";
@@ -196,7 +195,7 @@ export default function OrderDetails() {
       setSaving(true); setErr("");
       const fee=shippingFee === "" ? null : Number(shippingFee);
       if(fee!==null&&(!Number.isFinite(fee)||fee<0))throw new Error("Enter a valid shipping fee of zero or more, or leave it blank.");
-      const carrierManaged=["Shiprocket","Shadowfax360"].includes(shippingProvider);
+      const carrierManaged=["Shiprocket","Shadowfax360","Delhivery"].includes(shippingProvider);
       const payload={shippingProvider:shippingProvider||null,shippingFee:fee,trackingCode:trackingCode||null,
         ...(carrierManaged?{}:{shipmentStatus:shipmentStatus||undefined,shipmentId:shipmentId||null,awbNumber:awbNumber||null,trackingUrl:trackingUrl||null})};
       const response=await orderService.updateShipping(orderId,payload);
@@ -208,81 +207,12 @@ export default function OrderDetails() {
     } finally { setSaving(false); }
   };
 
-  const createShipment = async () => {
-    try {
-      if (!order) return;
-
-      const cod = isCOD(order);
-
-      // ✅ rule: Paid OR COD
-      if (order.paymentStatus !== "Paid" && !cod) {
-        alert("Only PAID or COD orders can be pushed to Shiprocket.");
-        return;
-      }
-
-      // ✅ validate required address fields (prevents Shiprocket failures)
-      const chk = hasBasicShiprocketAddress(order);
-      if (!chk.ok) {
-        alert(`Cannot create shipment: ${chk.reason}\n\nFill shipping details in order first.`);
-        return;
-      }
-
-      if (!window.confirm("Create shipment in Shiprocket?")) return;
-
-      setSaving(true);
-      setErr("");
-
-      // ✅ This must call POST /api/shipping/shiprocket/:orderId/push
-      await shiprocketService.createShipment(order.id);
-
-      await load();
-    } catch (e) {
-      console.error(e);
-      alert(e?.response?.data?.message || "Failed to create shipment");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const syncStatus = async () => {
-    try {
-      if (!order) return;
-
-      // ✅ must have shipmentId (Shiprocket generates it)
-      if (order.shippingProvider !== "Shiprocket" || !order.shipmentId) {
-        alert("Shipment not created in Shiprocket yet. Click Create Shipment first.");
-        return;
-      }
-
-      setSaving(true);
-      setErr("");
-
-      // ✅ This must call POST /api/shipping/shiprocket/:orderId/sync
-      await shiprocketService.syncTracking(order.id);
-
-      await load();
-    } catch (e) {
-      console.error(e);
-      alert(e?.response?.data?.message || "Failed to sync status");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   if (loading) return <div className="p-6">Loading order...</div>;
   if (!order) return <div className="p-6">Order not found</div>;
 
   const cod = isCOD(order);
 
-  const canCreateShipment =
-    (order.paymentStatus === "Paid" || cod) &&
-    !order.shipmentId &&
-    !(order.shipments || []).some(s => s.status !== "Cancelled") &&
-    order.shippingProvider !== "Shadowfax360";
-
-  const canSyncShipment = order.shippingProvider === "Shiprocket" && !!order.shipmentId;
-
-  const isShiprocket = ["Shiprocket","Shadowfax360"].includes(shippingProvider);
+  const isShiprocket = ["Shiprocket","Shadowfax360","Delhivery"].includes(shippingProvider);
   const shiprocketFieldsLocked = isShiprocket; // lock fields when provider is shiprocket
 
   return (
@@ -550,26 +480,7 @@ export default function OrderDetails() {
         )}
       </div>
 
-      {/* Shiprocket Actions */}
-      <div className="mt-4 flex gap-2">
-        <button
-          onClick={createShipment}
-          className="px-3 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-60"
-          disabled={saving || !canCreateShipment}
-          title={!canCreateShipment ? "Only PAID or COD orders & not already pushed" : ""}
-        >
-          Create Shiprocket shipment
-        </button>
-
-        <button
-          onClick={syncStatus}
-          className="px-3 py-2 border rounded-lg disabled:opacity-60"
-          disabled={saving || !canSyncShipment}
-          title={!canSyncShipment ? "Create shipment first (needs shipmentId)" : ""}
-        >
-          Sync Shiprocket status
-        </button>
-      </div>
+      <div className="mt-4 flex gap-2"><button onClick={()=>nav(`/manage/shipping?orderId=${order.id}`)} className="px-3 py-2 bg-blue-600 text-white rounded-lg">Create / manage shipment for this order</button></div>
     </div>
   );
 }

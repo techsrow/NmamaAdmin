@@ -1,4 +1,4 @@
-export const needsCarrierAwb=provider=>!!provider&&! ["Shiprocket","Shadowfax360","Local","Custom","Manual"].includes(provider);
+export const needsCarrierAwb=provider=>!!provider&&! ["Shiprocket","Shadowfax360","Delhivery","Local","Custom","Manual"].includes(provider);
 export function buildShipmentPayload({provider,order,items,pkg,rate,documents={}}){
  if(!provider)throw new Error('Select a shipping provider.');
  if(!items.length)throw new Error('Select at least one item.');
@@ -13,6 +13,7 @@ export function buildShipmentPayload({provider,order,items,pkg,rate,documents={}
   if(result.sellerGstin&&!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(result.sellerGstin))throw new Error('Enter a valid seller GSTIN, or leave it blank when optional.');
   if(Number(order.totalAmount)-Number(order.shippingFee||0)>=50000&&(!/^\d{12}$/.test(result.ewayBill||'')||!result.sellerGstin))throw new Error('Enter the e-way bill and seller GSTIN for this high-value shipment.');
  }else result.items=items;
+ if(provider==='Delhivery'){for(const k of ['ewayBill','sellerGstin'])if(documents[k]?.trim())result[k]=documents[k].trim();}
  if(needsCarrierAwb(provider)){
   result.awb=(documents.awb||'').trim();
   if(!/^[A-Za-z0-9][A-Za-z0-9._/-]{2,99}$/.test(result.awb))throw new Error('Enter the actual carrier AWB after booking in its portal.');

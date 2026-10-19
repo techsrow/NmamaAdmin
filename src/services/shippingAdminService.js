@@ -3,6 +3,7 @@ import api from "./api";
 const unwrap = (r) => r?.data?.data ?? r?.data ?? r;
 
 const shippingAdminService = {
+ notifyShipment: async id=>unwrap(await api.post(`/shipping/operations/shipments/${id}/notify`)),
  reverseDetails: async id=>unwrap(await api.get(`/shipping/operations/returns/${id}`)),
  bookReverse: async(id,b)=>unwrap(await api.post(`/shipping/operations/returns/${id}/book`,b)),
  syncReverse: async(id,awb)=>unwrap(await api.post(`/shipping/operations/returns/${id}/sync`,{awb})),
@@ -52,6 +53,7 @@ const shippingAdminService = {
   shipments: async (params = {}) => unwrap(await api.get("/shipping/shipments", { params })),
   shipment: async (id) => unwrap(await api.get(`/shipping/shipments/${id}`)),
   schedulePickup: async (id, payload = {}) => unwrap(await api.post(`/shipping/shipments/${id}/pickup`, payload)),
+  labelPdf: async id=>(await api.post(`/shipping/shipments/${id}/label-pdf`,{},{responseType:"blob",timeout:60000})).data,
   label: async (id, payload = {}) => unwrap(await api.post(`/shipping/shipments/${id}/label`, payload)),
   track: async (id) => unwrap(await api.post(`/shipping/shipments/${id}/track`)),
   cancel: async (id, payload = {}) => unwrap(await api.post(`/shipping/shipments/${id}/cancel`, payload)),
